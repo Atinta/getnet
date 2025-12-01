@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sticker Tracker v4</title>
+    <title>Sticker Tracker v4.2 (Robust)</title>
     
     <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -12,7 +12,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
 
-    <!-- FIREBASE (Base de datos en la nube) -->
+    <!-- FIREBASE (Compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
@@ -23,8 +23,6 @@
         .input-select:focus { border-color: #fbbf24; background-color: #fff; }
         .glass-header { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        
-        /* Animación suave para modales */
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
         .animate-pop { animation: fadeIn 0.2s ease-out forwards; }
     </style>
@@ -33,21 +31,15 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- ⚙️ SISTEMA DE AUTO-CONFIGURACIÓN ⚙️ ---
-        // Ya no necesitas editar código. La app lee la config de la memoria local.
-        
+        // --- ⚙️ INIT FIREBASE SEGURO ⚙️ ---
         let db = null;
         const storedConfig = localStorage.getItem('firebase_app_config');
-        
-        if (storedConfig) {
+        if (storedConfig && typeof firebase !== 'undefined') {
             try {
                 const config = JSON.parse(storedConfig);
-                firebase.initializeApp(config);
+                if (!firebase.apps.length) firebase.initializeApp(config);
                 db = firebase.firestore();
-                console.log("Firebase conectado exitosamente");
-            } catch (e) {
-                console.error("Error al iniciar Firebase", e);
-            }
+            } catch (e) { console.error("Firebase init error", e); }
         }
 
         // --- ICONOS ---
@@ -58,7 +50,8 @@
             ArrowRight: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>,
             CloudOff: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8a5 5 0 0 0 .68 9h1.38"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>,
             CloudOn: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>,
-            Database: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            Upload: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>,
+            Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
         };
 
         const { useState, useEffect } = React;
@@ -76,7 +69,6 @@
             const [history, setHistory] = useState([]);
             const [settings, setSettings] = useState({ startDate: Date.now(), deadlineDate: Date.now() + (1000 * 60 * 60 * 24 * 14) });
             
-            // UI
             const [showMoveModal, setShowMoveModal] = useState(false);
             const [showHistoryModal, setShowHistoryModal] = useState(false);
             const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -86,14 +78,13 @@
             const [toStage, setToStage] = useState('printing');
             const [moveDate, setMoveDate] = useState(new Date().toISOString().split('T')[0]);
             
-            // Config de Nube
             const [isOnline, setIsOnline] = useState(!!db);
             const [configInput, setConfigInput] = useState('');
+            const [saveStatus, setSaveStatus] = useState('idle'); // idle, saving, saved, error
 
             // --- CARGA DE DATOS ---
             useEffect(() => {
                 if (db) {
-                    // Modo Nube
                     const unsubscribe = db.collection('sticker_production').doc('main_data')
                         .onSnapshot((doc) => {
                             if (doc.exists) {
@@ -101,11 +92,15 @@
                                 if (data.designs) setDesigns(data.designs);
                                 if (data.history) setHistory(data.history);
                                 if (data.settings) setSettings(data.settings);
+                                setSaveStatus('saved');
                             }
+                        }, (error) => {
+                            console.error("Firestore Read Error:", error);
+                            alert("⚠️ Error leyendo de Firebase: " + error.code + "\n\nRevisa que tus 'Reglas' en Firebase estén en modo prueba (allow read, write: if true;)");
+                            setSaveStatus('error');
                         });
                     return () => unsubscribe();
                 } else {
-                    // Modo Local
                     const savedData = localStorage.getItem('stk_data_v7');
                     const savedHistory = localStorage.getItem('stk_hist_v7');
                     const savedSettings = localStorage.getItem('stk_conf_v7');
@@ -135,7 +130,16 @@
                 };
 
                 if (db) {
-                    db.collection('sticker_production').doc('main_data').set(dataToSave).catch(e => alert("Error guardando en nube: " + e.message));
+                    setSaveStatus('saving');
+                    db.collection('sticker_production').doc('main_data').set(dataToSave)
+                        .then(() => {
+                            setSaveStatus('saved');
+                            setTimeout(() => setSaveStatus('idle'), 2000);
+                        })
+                        .catch(e => {
+                            setSaveStatus('error');
+                            alert("❌ Error guardando: " + e.message + "\n\nIMPORTANTE: Ve a tu Consola Firebase -> Firestore Database -> Reglas, y cámbialas a:\nallow read, write: if true;");
+                        });
                 } else {
                     if(newDesigns) localStorage.setItem('stk_data_v7', JSON.stringify(newDesigns));
                     if(newHistory) localStorage.setItem('stk_hist_v7', JSON.stringify(newHistory));
@@ -143,13 +147,16 @@
                 }
             };
 
-            // Helpers
+            const forceUpload = () => {
+                if(!confirm("¿Subir los datos que ves en pantalla a la nube? Esto sobrescribirá lo que haya en Firebase.")) return;
+                saveData(null, null, null); // Guarda el estado actual
+            };
+
             const getTotalInProcess = (d) => Object.values(d.stages).reduce((a,b) => a + b, 0);
             const getPending = (d) => Math.max(0, d.target - getTotalInProcess(d));
             const totalTarget = designs.reduce((a,c) => a + c.target, 0);
             const totalReady = designs.reduce((a,c) => a + c.stages.ready, 0);
             
-            // Proyección
             const calculateProjection = () => {
                 const today = Date.now();
                 const daysElapsed = Math.max(1, Math.ceil((today - settings.startDate) / (1000 * 60 * 60 * 24)));
@@ -166,57 +173,35 @@
             const handleMove = () => {
                 const amt = parseInt(moveAmount);
                 if (!amt || amt <= 0) return;
-                
                 const idx = designs.findIndex(d => d.id === selectedDesignId);
                 const newDesigns = [...designs];
                 const design = newDesigns[idx];
-                
                 if (fromStage !== 'new') {
                      if (design.stages[fromStage] < amt) return alert('Stock insuficiente');
                      design.stages[fromStage] -= amt;
                 }
                 design.stages[toStage] += amt;
-
-                const log = {
-                    id: Date.now(),
-                    timestamp: new Date(moveDate).getTime(),
-                    designName: design.realName,
-                    from: fromStage,
-                    to: toStage,
-                    amount: amt
-                };
-
+                const log = { id: Date.now(), timestamp: new Date(moveDate).getTime(), designName: design.realName, from: fromStage, to: toStage, amount: amt };
                 saveData(newDesigns, [log, ...history].slice(0, 100), null);
                 setShowMoveModal(false);
             };
 
             const handleConnectFirebase = () => {
                 try {
-                    // Intento básico de validación
                     const cleanInput = configInput.trim();
                     let config;
-                    // Si el usuario pegó todo el "const firebaseConfig = {...}", extraemos solo el JSON
                     if (cleanInput.includes('{')) {
                         const jsonPart = cleanInput.substring(cleanInput.indexOf('{'), cleanInput.lastIndexOf('}') + 1);
-                        // Convertir a JSON valido (las keys de JS no tienen comillas a veces, esto es un hack simple)
-                        // Para evitar errores complejos, asumimos que el usuario pega un JSON valido o el objeto JS limpio.
-                        // Lo mejor es guardarlo como string y evaluarlo o pedir JSON puro.
-                        // Vamos a usar una función constructora para evaluar objetos JS laxos
                         config = (new Function("return " + jsonPart))();
-                    } else {
-                        throw new Error("Formato no reconocido");
-                    }
-                    
+                    } else { throw new Error("Formato no reconocido"); }
                     localStorage.setItem('firebase_app_config', JSON.stringify(config));
-                    alert("Configuración guardada. La página se recargará para conectar.");
+                    alert("Configuración guardada. Recargando...");
                     window.location.reload();
-                } catch (e) {
-                    alert("Error al leer la configuración. Asegúrate de copiar solo el objeto { ... } o el código completo que te da Firebase.\n\nDetalle: " + e.message);
-                }
+                } catch (e) { alert("Error de formato: " + e.message); }
             };
             
             const handleDisconnect = () => {
-                if(confirm("¿Desconectar de la nube? Volverás al modo local.")) {
+                if(confirm("¿Desconectar? Volverás a modo local.")) {
                     localStorage.removeItem('firebase_app_config');
                     window.location.reload();
                 }
@@ -240,6 +225,10 @@
                                     <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-emerald-100"><Icons.CloudOn /> Online</span> : 
                                     <span className="flex items-center gap-1 text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-slate-200" title="Modo Local"><Icons.CloudOff /> Local</span>
                                 }
+                                {/* Save Status Indicator */}
+                                {saveStatus === 'saving' && <span className="text-[10px] text-yellow-600 font-bold animate-pulse">Guardando...</span>}
+                                {saveStatus === 'saved' && <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><Icons.Check /> Al día</span>}
+                                {saveStatus === 'error' && <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded">Error Guardado</span>}
                             </div>
                         </div>
                         <button onClick={() => setShowHistoryModal(true)} className="bg-white hover:bg-slate-50 border border-slate-200 p-3 rounded-xl shadow-sm text-slate-600 relative">
@@ -415,7 +404,6 @@
                             <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <h3 className="font-black text-xl mb-6 text-slate-800 border-b border-slate-100 pb-4">Configuración</h3>
                                 
-                                {/* Sección de Nube */}
                                 <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                     <div className="flex items-center gap-2 mb-3">
                                         <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
@@ -434,9 +422,15 @@
                                             <button onClick={handleConnectFirebase} className="w-full py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900">Conectar Nube</button>
                                         </div>
                                     ) : (
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-sm font-bold text-emerald-600">Conectado y Sincronizando</span>
-                                            <button onClick={handleDisconnect} className="text-xs text-rose-500 font-bold hover:underline">Desconectar</button>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm font-bold text-emerald-600">Conectado y Sincronizando</span>
+                                                <button onClick={handleDisconnect} className="text-xs text-rose-500 font-bold hover:underline">Desconectar</button>
+                                            </div>
+                                            <button onClick={forceUpload} className="w-full py-2 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-xs font-bold hover:bg-blue-100 flex justify-center gap-2 items-center">
+                                                <Icons.Upload /> Subir mis datos a la nube
+                                            </button>
+                                            <p className="text-[10px] text-slate-400 text-center leading-tight">Usa esto si la nube está vacía pero tú tienes datos aquí.</p>
                                         </div>
                                     )}
                                 </div>
