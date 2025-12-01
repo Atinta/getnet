@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sticker Tracker v4</title>
+    
+    <!-- Librerías -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+    <!-- FIREBASE (Base de datos en la nube) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+        .card-hover:hover { transform: translateY(-3px); border-color: #fbbf24; }
+        .input-select { width: 100%; background-color: #f8fafc; padding: 12px 16px; border-radius: 12px; font-weight: 600; color: #334155; border: 2px solid #f1f5f9; outline: none; }
+        .input-select:focus { border-color: #fbbf24; background-color: #fff; }
+        .glass-header { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        
+        /* Animación suave para modales */
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .animate-pop { animation: fadeIn 0.2s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-[#FFFDF5] text-slate-800 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- ⚙️ SISTEMA DE AUTO-CONFIGURACIÓN ⚙️ ---
+        // Ya no necesitas editar código. La app lee la config de la memoria local.
+        
+        let db = null;
+        const storedConfig = localStorage.getItem('firebase_app_config');
+        
+        if (storedConfig) {
+            try {
+                const config = JSON.parse(storedConfig);
+                firebase.initializeApp(config);
+                db = firebase.firestore();
+                console.log("Firebase conectado exitosamente");
+            } catch (e) {
+                console.error("Error al iniciar Firebase", e);
+            }
+        }
+
+        // --- ICONOS ---
+        const Icons = {
+            Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>,
+            History: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"></path><path d="M3 3v9h9"></path><path d="M12 7v5l4 2"></path></svg>,
+            X: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>,
+            ArrowRight: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>,
+            CloudOff: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8a5 5 0 0 0 .68 9h1.38"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>,
+            CloudOn: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>,
+            Database: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+        };
+
+        const { useState, useEffect } = React;
+
+        const INITIAL_DATA = [
+            { id: 'g9-1', realName: 'G9-1', isG10: false, color: 'text-blue-600', bgHex: '#eff6ff', accentHex: '#3b82f6', target: 20000, stages: { printing: 0, diecutting: 0, pre_juan: 0, juan: 2592, loose: 0, bundles: 0, ready: 0 } },
+            { id: 'g9-2', realName: 'G9-2', isG10: false, color: 'text-emerald-600', bgHex: '#ecfdf5', accentHex: '#10b981', target: 27000, stages: { printing: 0, diecutting: 0, pre_juan: 0, juan: 3300, loose: 0, bundles: 0, ready: 0 } },
+            { id: 'g9-3', realName: 'G9-3', isG10: false, color: 'text-violet-600', bgHex: '#f5f3ff', accentHex: '#8b5cf6', target: 29000, stages: { printing: 0, diecutting: 0, pre_juan: 1512, juan: 4968, loose: 0, bundles: 0, ready: 0 } },
+            { id: 'g10-1', realName: 'G10-1', isG10: true, color: 'text-orange-600', bgHex: '#fff7ed', accentHex: '#f97316', target: 25000, stages: { printing: 5640, diecutting: 0, pre_juan: 0, juan: 0, loose: 0, bundles: 100, ready: 0 } },
+            { id: 'g10-2', realName: 'G10-2', isG10: true, color: 'text-yellow-600', bgHex: '#fefce8', accentHex: '#eab308', target: 30000, stages: { printing: 0, diecutting: 0, pre_juan: 230, juan: 0, loose: 1800, bundles: 1000, ready: 0 } }
+        ];
+
+        function StickerProductionApp() {
+            const [designs, setDesigns] = useState(INITIAL_DATA);
+            const [history, setHistory] = useState([]);
+            const [settings, setSettings] = useState({ startDate: Date.now(), deadlineDate: Date.now() + (1000 * 60 * 60 * 24 * 14) });
+            
+            // UI
+            const [showMoveModal, setShowMoveModal] = useState(false);
+            const [showHistoryModal, setShowHistoryModal] = useState(false);
+            const [showSettingsModal, setShowSettingsModal] = useState(false);
+            const [selectedDesignId, setSelectedDesignId] = useState(designs[0].id);
+            const [moveAmount, setMoveAmount] = useState('');
+            const [fromStage, setFromStage] = useState('new');
+            const [toStage, setToStage] = useState('printing');
+            const [moveDate, setMoveDate] = useState(new Date().toISOString().split('T')[0]);
+            
+            // Config de Nube
+            const [isOnline, setIsOnline] = useState(!!db);
+            const [configInput, setConfigInput] = useState('');
+
+            // --- CARGA DE DATOS ---
+            useEffect(() => {
+                if (db) {
+                    // Modo Nube
+                    const unsubscribe = db.collection('sticker_production').doc('main_data')
+                        .onSnapshot((doc) => {
+                            if (doc.exists) {
+                                const data = doc.data();
+                                if (data.designs) setDesigns(data.designs);
+                                if (data.history) setHistory(data.history);
+                                if (data.settings) setSettings(data.settings);
+                            }
+                        });
+                    return () => unsubscribe();
+                } else {
+                    // Modo Local
+                    const savedData = localStorage.getItem('stk_data_v7');
+                    const savedHistory = localStorage.getItem('stk_hist_v7');
+                    const savedSettings = localStorage.getItem('stk_conf_v7');
+                    if (savedData) {
+                         const parsed = JSON.parse(savedData);
+                         const cleaned = parsed.map(d => {
+                             const { to_print, ...rest } = d.stages; 
+                             return { ...d, stages: rest };
+                         });
+                         setDesigns(cleaned);
+                    }
+                    if (savedHistory) setHistory(JSON.parse(savedHistory));
+                    if (savedSettings) setSettings(JSON.parse(savedSettings));
+                }
+            }, []);
+
+            // --- GUARDADO ---
+            const saveData = (newDesigns, newHistory, newSettings) => {
+                if(newDesigns) setDesigns(newDesigns);
+                if(newHistory) setHistory(newHistory);
+                if(newSettings) setSettings(newSettings);
+
+                const dataToSave = {
+                    designs: newDesigns || designs,
+                    history: newHistory || history,
+                    settings: newSettings || settings
+                };
+
+                if (db) {
+                    db.collection('sticker_production').doc('main_data').set(dataToSave).catch(e => alert("Error guardando en nube: " + e.message));
+                } else {
+                    if(newDesigns) localStorage.setItem('stk_data_v7', JSON.stringify(newDesigns));
+                    if(newHistory) localStorage.setItem('stk_hist_v7', JSON.stringify(newHistory));
+                    if(newSettings) localStorage.setItem('stk_conf_v7', JSON.stringify(newSettings));
+                }
+            };
+
+            // Helpers
+            const getTotalInProcess = (d) => Object.values(d.stages).reduce((a,b) => a + b, 0);
+            const getPending = (d) => Math.max(0, d.target - getTotalInProcess(d));
+            const totalTarget = designs.reduce((a,c) => a + c.target, 0);
+            const totalReady = designs.reduce((a,c) => a + c.stages.ready, 0);
+            
+            // Proyección
+            const calculateProjection = () => {
+                const today = Date.now();
+                const daysElapsed = Math.max(1, Math.ceil((today - settings.startDate) / (1000 * 60 * 60 * 24)));
+                const velocity = totalReady / daysElapsed;
+                const remaining = totalTarget - totalReady;
+                const daysToFinish = velocity > 0 ? Math.ceil(remaining / velocity) : 0;
+                const estimatedDate = new Date(today + (daysToFinish * 24 * 60 * 60 * 1000));
+                const daysUntilDeadline = Math.max(1, Math.ceil((settings.deadlineDate - today) / (1000 * 60 * 60 * 24)));
+                const requiredVelocity = Math.ceil(remaining / daysUntilDeadline);
+                return { velocity, estimatedDate, requiredVelocity };
+            };
+            const projection = calculateProjection();
+
+            const handleMove = () => {
+                const amt = parseInt(moveAmount);
+                if (!amt || amt <= 0) return;
+                
+                const idx = designs.findIndex(d => d.id === selectedDesignId);
+                const newDesigns = [...designs];
+                const design = newDesigns[idx];
+                
+                if (fromStage !== 'new') {
+                     if (design.stages[fromStage] < amt) return alert('Stock insuficiente');
+                     design.stages[fromStage] -= amt;
+                }
+                design.stages[toStage] += amt;
+
+                const log = {
+                    id: Date.now(),
+                    timestamp: new Date(moveDate).getTime(),
+                    designName: design.realName,
+                    from: fromStage,
+                    to: toStage,
+                    amount: amt
+                };
+
+                saveData(newDesigns, [log, ...history].slice(0, 100), null);
+                setShowMoveModal(false);
+            };
+
+            const handleConnectFirebase = () => {
+                try {
+                    // Intento básico de validación
+                    const cleanInput = configInput.trim();
+                    let config;
+                    // Si el usuario pegó todo el "const firebaseConfig = {...}", extraemos solo el JSON
+                    if (cleanInput.includes('{')) {
+                        const jsonPart = cleanInput.substring(cleanInput.indexOf('{'), cleanInput.lastIndexOf('}') + 1);
+                        // Convertir a JSON valido (las keys de JS no tienen comillas a veces, esto es un hack simple)
+                        // Para evitar errores complejos, asumimos que el usuario pega un JSON valido o el objeto JS limpio.
+                        // Lo mejor es guardarlo como string y evaluarlo o pedir JSON puro.
+                        // Vamos a usar una función constructora para evaluar objetos JS laxos
+                        config = (new Function("return " + jsonPart))();
+                    } else {
+                        throw new Error("Formato no reconocido");
+                    }
+                    
+                    localStorage.setItem('firebase_app_config', JSON.stringify(config));
+                    alert("Configuración guardada. La página se recargará para conectar.");
+                    window.location.reload();
+                } catch (e) {
+                    alert("Error al leer la configuración. Asegúrate de copiar solo el objeto { ... } o el código completo que te da Firebase.\n\nDetalle: " + e.message);
+                }
+            };
+            
+            const handleDisconnect = () => {
+                if(confirm("¿Desconectar de la nube? Volverás al modo local.")) {
+                    localStorage.removeItem('firebase_app_config');
+                    window.location.reload();
+                }
+            };
+
+            const selectedDesign = designs.find(d => d.id === selectedDesignId) || designs[0];
+            const selectedPending = getPending(selectedDesign);
+
+            return (
+                <div className="pb-20 max-w-7xl mx-auto px-4 md:px-8 py-6">
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-8 sticky top-0 z-30 py-4 glass-header -mx-4 px-4 md:-mx-8 md:px-8">
+                        <div>
+                            <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2 cursor-pointer group" onClick={() => setShowSettingsModal(true)}>
+                                PRODUCCIÓN 
+                                <span className="text-slate-300 group-hover:text-yellow-500 transition-colors"><Icons.Settings /></span>
+                            </h1>
+                            <div className="flex items-center gap-3 mt-1 text-sm font-semibold text-slate-500">
+                                <span>Entrega: <span className="text-slate-700">{new Date(settings.deadlineDate).toLocaleDateString('es-CL', {day:'numeric', month:'long'})}</span></span>
+                                {isOnline ? 
+                                    <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-emerald-100"><Icons.CloudOn /> Online</span> : 
+                                    <span className="flex items-center gap-1 text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-slate-200" title="Modo Local"><Icons.CloudOff /> Local</span>
+                                }
+                            </div>
+                        </div>
+                        <button onClick={() => setShowHistoryModal(true)} className="bg-white hover:bg-slate-50 border border-slate-200 p-3 rounded-xl shadow-sm text-slate-600 relative">
+                            <Icons.History />
+                        </button>
+                    </div>
+
+                    {/* Metrics */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                        <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col items-center justify-center card-hover">
+                            <span className="text-[11px] text-slate-400 uppercase font-extrabold tracking-widest mb-2">Velocidad Actual</span>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-5xl font-black text-slate-800 tracking-tight">{Math.round(projection.velocity).toLocaleString()}</span>
+                                <span className="text-sm text-slate-400 font-semibold">unid/día</span>
+                            </div>
+                            <span className="text-xs text-blue-600 font-bold mt-3 bg-blue-50 px-3 py-1.5 rounded-full">Fin estimado: {projection.estimatedDate.toLocaleDateString('es-CL', {day: 'numeric', month:'short'})}</span>
+                        </div>
+                        <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col items-center justify-center card-hover">
+                            <span className="text-[11px] text-slate-400 uppercase font-extrabold tracking-widest mb-2">Meta Diaria</span>
+                            <div className="flex items-baseline gap-2">
+                                <span className={`text-5xl font-black tracking-tight ${projection.velocity < projection.requiredVelocity ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                    {projection.requiredVelocity.toLocaleString()}
+                                </span>
+                                <span className="text-sm text-slate-400 font-semibold">unid/día</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Cards */}
+                    <div className="space-y-6">
+                        {designs.map(d => {
+                            const pending = getPending(d);
+                            const pct = Math.round((d.stages.ready / d.target) * 100);
+                            return (
+                                <div key={d.id} className="bg-white rounded-3xl shadow-sm border border-slate-100/50 overflow-hidden flex flex-col lg:flex-row card-hover group"
+                                    onClick={() => { setSelectedDesignId(d.id); setFromStage('new'); setToStage('printing'); setMoveAmount(''); setShowMoveModal(true); }}
+                                >
+                                    <div className="lg:w-40 p-6 flex flex-row lg:flex-col items-center justify-between lg:justify-center text-white relative" style={{ backgroundColor: d.accentHex }}>
+                                        <div>
+                                            <div className="text-3xl font-black tracking-tighter">{d.realName}</div>
+                                            <div className="text-[11px] opacity-90 font-bold mt-1 tracking-wide">{d.target.toLocaleString()} META</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 p-6 lg:p-8 flex flex-col justify-center border-b lg:border-r border-slate-100 min-w-[200px]">
+                                        <div className="flex justify-between items-end mb-3">
+                                            <span className="text-3xl font-black text-slate-800">{pct}% <span className="text-base text-slate-400 font-medium">listo</span></span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden relative">
+                                            <div className="h-full transition-all duration-1000 ease-out" style={{ width: `${pct}%`, backgroundColor: d.accentHex }}></div>
+                                        </div>
+                                    </div>
+                                    <div className="flex-[3] p-6 lg:p-8 grid grid-cols-2 lg:grid-cols-3 gap-8 text-sm items-start bg-white cursor-pointer">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2 mb-2"><div className="w-2 h-2 rounded-full bg-slate-200"></div><span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Pendiente</span></div>
+                                            <StageRow label="Por Imprimir" val={pending} isPending />
+                                            <div className="h-px bg-slate-100 my-2"></div>
+                                            <StageRow label="Imprimiendo" val={d.stages.printing} />
+                                            {d.isG10 && <StageRow label="Troquelando" val={d.stages.diecutting} />}
+                                            <StageRow label="Rollos Listos" val={d.stages.pre_juan} highlight />
+                                        </div>
+                                        <div className="space-y-2 lg:border-l lg:border-slate-100 lg:pl-8">
+                                            <div className="flex items-center gap-2 mb-2"><div className="w-2 h-2 rounded-full bg-slate-300"></div><span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Proceso</span></div>
+                                            <StageRow label="Donde Juan" val={d.stages.juan} highlight />
+                                            <StageRow label="Stickers Sueltos" val={d.stages.loose} />
+                                        </div>
+                                        <div className="space-y-2 lg:border-l lg:border-slate-100 lg:pl-8">
+                                            <div className="flex items-center gap-2 mb-2"><div className="w-2 h-2 rounded-full bg-emerald-400"></div><span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Final</span></div>
+                                            <StageRow label="En Lingotes" val={d.stages.bundles} />
+                                            <StageRow label="Listos" val={d.stages.ready} isFinal />
+                                        </div>
+                                    </div>
+                                    <div className="hidden lg:flex w-16 items-center justify-center text-slate-200 group-hover:text-yellow-500 group-hover:bg-yellow-50 transition-all">
+                                        <Icons.ArrowRight />
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* --- MODALES --- */}
+
+                    {showMoveModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-pop" onClick={() => setShowMoveModal(false)}>
+                            <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg" style={{ backgroundColor: selectedDesign.accentHex }}>
+                                            {selectedDesign.realName.split('-')[1] || 'G'}
+                                        </div>
+                                        <div>
+                                            <h2 className="text-2xl font-black text-slate-800">{selectedDesign.realName}</h2>
+                                            <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">Registrar Movimiento</div>
+                                        </div>
+                                    </div>
+                                    <input type="date" className="bg-white border-2 border-slate-200 rounded-xl p-2 text-slate-600 font-bold text-sm outline-none focus:border-yellow-400" value={moveDate} onChange={e => setMoveDate(e.target.value)} />
+                                </div>
+                                <div className="p-8">
+                                    <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
+                                        <div className="flex-1 w-full space-y-2">
+                                            <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider ml-1">Origen (Desde)</label>
+                                            <select className="input-select" value={fromStage} onChange={e => setFromStage(e.target.value)}>
+                                                <option value="new">✨ Nuevo Ingreso (Impresión)</option>
+                                                <option value="printing" disabled={selectedDesign.stages.printing===0}>🖨️ Imprimiendo ({selectedDesign.stages.printing})</option>
+                                                {selectedDesign.isG10 && <option value="diecutting" disabled={selectedDesign.stages.diecutting===0}>🔪 Troquelando ({selectedDesign.stages.diecutting})</option>}
+                                                <option value="pre_juan" disabled={selectedDesign.stages.pre_juan===0}>📜 Rollos Listos ({selectedDesign.stages.pre_juan})</option>
+                                                <option value="juan" disabled={selectedDesign.stages.juan===0}>✂️ Donde Juan ({selectedDesign.stages.juan})</option>
+                                                <option value="loose" disabled={selectedDesign.stages.loose===0}>🎲 Stickers Sueltos ({selectedDesign.stages.loose})</option>
+                                                <option value="bundles" disabled={selectedDesign.stages.bundles===0}>🧱 En Lingotes ({selectedDesign.stages.bundles})</option>
+                                            </select>
+                                        </div>
+                                        <div className="hidden md:flex pt-6 text-slate-300"><Icons.ArrowRight /></div>
+                                        <div className="flex-1 w-full space-y-2">
+                                            <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider ml-1">Destino (Hacia)</label>
+                                            <select className="input-select" value={toStage} onChange={e => setToStage(e.target.value)}>
+                                                <option value="printing">🖨️ Imprimiendo</option>
+                                                {selectedDesign.isG10 && <option value="diecutting">🔪 Troquelando</option>}
+                                                <option value="pre_juan">📜 Rollos Listos</option>
+                                                <option value="juan">✂️ Donde Juan</option>
+                                                <option value="loose">🎲 Stickers Sueltos</option>
+                                                <option value="bundles">🧱 En Lingotes</option>
+                                                <option value="ready">✅ Listos Despacho</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    {fromStage === 'new' && (
+                                        <div className="mb-4 text-center text-sm text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                            ℹ️ Esto restará automáticamente de los <strong>{selectedPending.toLocaleString()}</strong> pendientes por imprimir.
+                                        </div>
+                                    )}
+                                    <div className="mb-8 bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
+                                        <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Cantidad a Mover</label>
+                                        <input type="number" autoFocus placeholder="0" className="w-full text-center bg-transparent text-6xl font-black text-slate-800 outline-none placeholder:text-slate-200" value={moveAmount} onChange={e => setMoveAmount(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleMove()} />
+                                    </div>
+                                    <button onClick={handleMove} className="w-full py-5 rounded-2xl text-white font-bold text-lg shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all active:translate-y-0 active:shadow-md" style={{ backgroundColor: selectedDesign.accentHex }}>CONFIRMAR MOVIMIENTO</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {showHistoryModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-pop" onClick={() => setShowHistoryModal(false)}>
+                            <div className="bg-white w-full max-w-md h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                                    <h3 className="font-black text-xl text-slate-800">Historial</h3>
+                                    <button onClick={() => setShowHistoryModal(false)} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-full shadow-sm"><Icons.X /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white scrollbar-hide">
+                                    {history.map(log => (
+                                        <div key={log.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center shadow-sm hover:shadow-md transition-all">
+                                            <div>
+                                                <div className="font-bold text-slate-700 flex items-center gap-2">
+                                                    {log.designName}
+                                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                                                        {new Date(log.timestamp).toLocaleDateString('es-CL', {day:'numeric', month:'short'})}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-1 font-semibold flex items-center gap-1">
+                                                    <span className="bg-slate-50 px-1.5 py-0.5 rounded text-slate-600">{log.from==='new'?'✨ Nuevo': log.from}</span> 
+                                                    <span className="text-slate-300">➜</span> 
+                                                    <span className="bg-slate-50 px-1.5 py-0.5 rounded text-slate-600">{log.to}</span>
+                                                </div>
+                                            </div>
+                                            <span className="font-black text-lg text-slate-800">+{log.amount}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showSettingsModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-pop" onClick={() => setShowSettingsModal(false)}>
+                            <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <h3 className="font-black text-xl mb-6 text-slate-800 border-b border-slate-100 pb-4">Configuración</h3>
+                                
+                                {/* Sección de Nube */}
+                                <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Base de Datos (Nube)</span>
+                                    </div>
+                                    
+                                    {!isOnline ? (
+                                        <div className="space-y-3">
+                                            <p className="text-xs text-slate-500">Pega aquí el código que te da Firebase para sincronizar entre dispositivos.</p>
+                                            <textarea 
+                                                className="w-full text-xs p-2 rounded border border-slate-200 bg-white h-20 outline-none focus:border-yellow-400 font-mono"
+                                                placeholder='const firebaseConfig = { ... }'
+                                                value={configInput}
+                                                onChange={e => setConfigInput(e.target.value)}
+                                            ></textarea>
+                                            <button onClick={handleConnectFirebase} className="w-full py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900">Conectar Nube</button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm font-bold text-emerald-600">Conectado y Sincronizando</span>
+                                            <button onClick={handleDisconnect} className="text-xs text-rose-500 font-bold hover:underline">Desconectar</button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-5">
+                                    <div><label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Fecha Inicio</label><input type="date" className="input-select" value={new Date(settings.startDate).toISOString().split('T')[0]} onChange={e => setSettings({...settings, startDate: new Date(e.target.value).getTime()})} /></div>
+                                    <div><label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Fecha Límite</label><input type="date" className="input-select" value={new Date(settings.deadlineDate).toISOString().split('T')[0]} onChange={e => setSettings({...settings, deadlineDate: new Date(e.target.value).getTime()})} /></div>
+                                </div>
+                                <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center gap-4">
+                                    <button onClick={() => { if(confirm("¿Resetear TODO?")) { saveData(INITIAL_DATA, [], null); setShowSettingsModal(false); } }} className="text-rose-500 text-xs font-bold px-4 py-3 hover:bg-rose-50 rounded-xl transition-colors">RESET TOTAL</button>
+                                    <button onClick={() => setShowSettingsModal(false)} className="bg-slate-800 text-white flex-1 py-3 rounded-xl font-bold text-sm hover:bg-slate-900 transition-colors shadow-lg">Cerrar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function StageRow({ label, val, highlight, isFinal, isPending }) {
+            const isZero = val <= 0;
+            return (
+                <div className={`flex justify-between items-center group/row ${isZero ? 'opacity-40' : 'opacity-100'}`}>
+                    <span className={`text-xs font-bold transition-colors ${isFinal ? 'text-emerald-600' : (isPending ? 'text-slate-400' : 'text-slate-500 group-hover/row:text-slate-700')}`}>{label}</span>
+                    <span className={`font-mono font-bold ${isFinal ? 'text-emerald-600 text-base' : (highlight ? 'text-slate-800 text-sm bg-yellow-100 px-1.5 rounded' : 'text-slate-700 text-sm')} ${isPending && 'text-slate-400 italic'}`}>
+                        {val > 0 ? val.toLocaleString() : (isPending ? '0' : '-')}
+                    </span>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<StickerProductionApp />);
+    </script>
+</body>
+</html>
