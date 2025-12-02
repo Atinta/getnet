@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sticker Tracker v4.2 (Robust)</title>
+    <title>Sticker Tracker v4.3 (Safe)</title>
     
     <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -31,15 +31,24 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- ⚙️ INIT FIREBASE SEGURO ⚙️ ---
+        // --- ⚙️ INIT FIREBASE SEGURO V3 ⚙️ ---
         let db = null;
         const storedConfig = localStorage.getItem('firebase_app_config');
+        
+        // Inicialización segura al cargar
         if (storedConfig && typeof firebase !== 'undefined') {
             try {
                 const config = JSON.parse(storedConfig);
-                if (!firebase.apps.length) firebase.initializeApp(config);
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(config);
+                    console.log("Firebase inicializado con éxito");
+                }
                 db = firebase.firestore();
-            } catch (e) { console.error("Firebase init error", e); }
+            } catch (e) { 
+                console.error("Error crítico iniciando Firebase:", e);
+                // No borramos la config automáticamente para permitir al usuario ver el error, 
+                // pero la app funcionará en modo local.
+            }
         }
 
         // --- ICONOS ---
@@ -80,7 +89,7 @@
             
             const [isOnline, setIsOnline] = useState(!!db);
             const [configInput, setConfigInput] = useState('');
-            const [saveStatus, setSaveStatus] = useState('idle'); // idle, saving, saved, error
+            const [saveStatus, setSaveStatus] = useState('idle');
 
             // --- CARGA DE DATOS ---
             useEffect(() => {
@@ -96,7 +105,7 @@
                             }
                         }, (error) => {
                             console.error("Firestore Read Error:", error);
-                            alert("⚠️ Error leyendo de Firebase: " + error.code + "\n\nRevisa que tus 'Reglas' en Firebase estén en modo prueba (allow read, write: if true;)");
+                            // No alertar intrusivamente, solo marcar error
                             setSaveStatus('error');
                         });
                     return () => unsubscribe();
@@ -138,7 +147,7 @@
                         })
                         .catch(e => {
                             setSaveStatus('error');
-                            alert("❌ Error guardando: " + e.message + "\n\nIMPORTANTE: Ve a tu Consola Firebase -> Firestore Database -> Reglas, y cámbialas a:\nallow read, write: if true;");
+                            alert("❌ Error guardando en nube: " + e.message);
                         });
                 } else {
                     if(newDesigns) localStorage.setItem('stk_data_v7', JSON.stringify(newDesigns));
@@ -148,22 +157,21 @@
             };
 
             const forceUpload = () => {
-                if(!confirm("¿Subir los datos que ves en pantalla a la nube? Esto sobrescribirá lo que haya en Firebase.")) return;
-                saveData(null, null, null); // Guarda el estado actual
+                if(!confirm("¿Subir los datos de esta pantalla a la nube?")) return;
+                saveData(null, null, null); 
             };
 
+            // ... helpers ...
             const getTotalInProcess = (d) => Object.values(d.stages).reduce((a,b) => a + b, 0);
             const getPending = (d) => Math.max(0, d.target - getTotalInProcess(d));
-            const totalTarget = designs.reduce((a,c) => a + c.target, 0);
-            const totalReady = designs.reduce((a,c) => a + c.stages.ready, 0);
             
             const calculateProjection = () => {
                 const today = Date.now();
                 const daysElapsed = Math.max(1, Math.ceil((today - settings.startDate) / (1000 * 60 * 60 * 24)));
+                const totalReady = designs.reduce((a,c) => a + c.stages.ready, 0);
                 const velocity = totalReady / daysElapsed;
-                const remaining = totalTarget - totalReady;
-                const daysToFinish = velocity > 0 ? Math.ceil(remaining / velocity) : 0;
-                const estimatedDate = new Date(today + (daysToFinish * 24 * 60 * 60 * 1000));
+                const remaining = designs.reduce((a,c) => a + c.target, 0) - totalReady;
+                const estimatedDate = new Date(today + ((velocity > 0 ? Math.ceil(remaining / velocity) : 0) * 24 * 60 * 60 * 1000));
                 const daysUntilDeadline = Math.max(1, Math.ceil((settings.deadlineDate - today) / (1000 * 60 * 60 * 24)));
                 const requiredVelocity = Math.ceil(remaining / daysUntilDeadline);
                 return { velocity, estimatedDate, requiredVelocity };
@@ -186,22 +194,40 @@
                 setShowMoveModal(false);
             };
 
+            // --- PARSER SEGURO PARA SQUARESPACE ---
             const handleConnectFirebase = () => {
-                try {
-                    const cleanInput = configInput.trim();
-                    let config;
-                    if (cleanInput.includes('{')) {
-                        const jsonPart = cleanInput.substring(cleanInput.indexOf('{'), cleanInput.lastIndexOf('}') + 1);
-                        config = (new Function("return " + jsonPart))();
-                    } else { throw new Error("Formato no reconocido"); }
-                    localStorage.setItem('firebase_app_config', JSON.stringify(config));
-                    alert("Configuración guardada. Recargando...");
-                    window.location.reload();
-                } catch (e) { alert("Error de formato: " + e.message); }
+                const text = configInput.trim();
+                
+                // Función para extraer el valor de una clave usando Regex simple
+                const extract = (key) => {
+                    // Busca patterns como: key: "valor" OR key: 'valor'
+                    const match = text.match(new RegExp(`${key}\\s*:\\s*["']([^"']+)["']`));
+                    return match ? match[1] : null;
+                };
+
+                const config = {
+                    apiKey: extract('apiKey'),
+                    authDomain: extract('authDomain'),
+                    projectId: extract('projectId'),
+                    storageBucket: extract('storageBucket'),
+                    messagingSenderId: extract('messagingSenderId'),
+                    appId: extract('appId'),
+                    measurementId: extract('measurementId')
+                };
+
+                // Verificación básica
+                if (!config.apiKey || !config.projectId) {
+                    alert("No se pudo leer la configuración. Asegúrate de copiar todo el bloque: const firebaseConfig = { ... };");
+                    return;
+                }
+
+                localStorage.setItem('firebase_app_config', JSON.stringify(config));
+                alert("✅ Configuración leída correctamente. Recargando...");
+                window.location.reload();
             };
             
             const handleDisconnect = () => {
-                if(confirm("¿Desconectar? Volverás a modo local.")) {
+                if(confirm("¿Desconectar de la nube?")) {
                     localStorage.removeItem('firebase_app_config');
                     window.location.reload();
                 }
@@ -225,10 +251,10 @@
                                     <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-emerald-100"><Icons.CloudOn /> Online</span> : 
                                     <span className="flex items-center gap-1 text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-slate-200" title="Modo Local"><Icons.CloudOff /> Local</span>
                                 }
-                                {/* Save Status Indicator */}
+                                {/* Save Status */}
                                 {saveStatus === 'saving' && <span className="text-[10px] text-yellow-600 font-bold animate-pulse">Guardando...</span>}
                                 {saveStatus === 'saved' && <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><Icons.Check /> Al día</span>}
-                                {saveStatus === 'error' && <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded">Error Guardado</span>}
+                                {saveStatus === 'error' && <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded">Error Sync</span>}
                             </div>
                         </div>
                         <button onClick={() => setShowHistoryModal(true)} className="bg-white hover:bg-slate-50 border border-slate-200 p-3 rounded-xl shadow-sm text-slate-600 relative">
