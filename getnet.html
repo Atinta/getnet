@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sticker Tracker v4.3 (Safe)</title>
+    <title>Sticker Tracker v5.0 (Auto-Connect)</title>
     
     <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -12,7 +12,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
 
-    <!-- FIREBASE (Compat) -->
+    <!-- FIREBASE (Versión Compatibilidad) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
@@ -31,24 +31,29 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- ⚙️ INIT FIREBASE SEGURO V3 ⚙️ ---
+        // --- 🔒 CONFIGURACIÓN DIRECTA (NO TOCAR) 🔒 ---
+        // Tus credenciales de getnet1 están aquí para conexión automática.
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQw-fiRkgQsFSVMzOkaterJWBYLu78wuA",
+            authDomain: "getnet1.firebaseapp.com",
+            projectId: "getnet1",
+            storageBucket: "getnet1.firebasestorage.app",
+            messagingSenderId: "72758603746",
+            appId: "1:72758603746:web:6674a71568e0e696dcd3bb",
+            measurementId: "G-XRKK4W3QJ3"
+        };
+
+        // --- INICIALIZACIÓN ---
         let db = null;
-        const storedConfig = localStorage.getItem('firebase_app_config');
-        
-        // Inicialización segura al cargar
-        if (storedConfig && typeof firebase !== 'undefined') {
-            try {
-                const config = JSON.parse(storedConfig);
-                if (!firebase.apps.length) {
-                    firebase.initializeApp(config);
-                    console.log("Firebase inicializado con éxito");
-                }
-                db = firebase.firestore();
-            } catch (e) { 
-                console.error("Error crítico iniciando Firebase:", e);
-                // No borramos la config automáticamente para permitir al usuario ver el error, 
-                // pero la app funcionará en modo local.
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
             }
+            db = firebase.firestore();
+            console.log("🔥 Conectado a: getnet1");
+        } catch (e) {
+            console.error("Error conexión:", e);
+            alert("Error crítico conectando a la base de datos.");
         }
 
         // --- ICONOS ---
@@ -57,10 +62,9 @@
             History: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"></path><path d="M3 3v9h9"></path><path d="M12 7v5l4 2"></path></svg>,
             X: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>,
             ArrowRight: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>,
-            CloudOff: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8a5 5 0 0 0 .68 9h1.38"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>,
             CloudOn: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>,
-            Upload: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>,
-            Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>,
+            Alert: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
         };
 
         const { useState, useEffect } = React;
@@ -87,9 +91,7 @@
             const [toStage, setToStage] = useState('printing');
             const [moveDate, setMoveDate] = useState(new Date().toISOString().split('T')[0]);
             
-            const [isOnline, setIsOnline] = useState(!!db);
-            const [configInput, setConfigInput] = useState('');
-            const [saveStatus, setSaveStatus] = useState('idle');
+            const [saveStatus, setSaveStatus] = useState('loading'); // loading, saved, error, permission-error
 
             // --- CARGA DE DATOS ---
             useEffect(() => {
@@ -102,27 +104,19 @@
                                 if (data.history) setHistory(data.history);
                                 if (data.settings) setSettings(data.settings);
                                 setSaveStatus('saved');
+                            } else {
+                                // Primera vez, documento no existe, lo creamos
+                                saveData(INITIAL_DATA, [], null);
                             }
                         }, (error) => {
-                            console.error("Firestore Read Error:", error);
-                            // No alertar intrusivamente, solo marcar error
-                            setSaveStatus('error');
+                            console.error("Error lectura:", error);
+                            if (error.code === 'permission-denied') {
+                                setSaveStatus('permission-error');
+                            } else {
+                                setSaveStatus('error');
+                            }
                         });
                     return () => unsubscribe();
-                } else {
-                    const savedData = localStorage.getItem('stk_data_v7');
-                    const savedHistory = localStorage.getItem('stk_hist_v7');
-                    const savedSettings = localStorage.getItem('stk_conf_v7');
-                    if (savedData) {
-                         const parsed = JSON.parse(savedData);
-                         const cleaned = parsed.map(d => {
-                             const { to_print, ...rest } = d.stages; 
-                             return { ...d, stages: rest };
-                         });
-                         setDesigns(cleaned);
-                    }
-                    if (savedHistory) setHistory(JSON.parse(savedHistory));
-                    if (savedSettings) setSettings(JSON.parse(savedSettings));
                 }
             }, []);
 
@@ -143,25 +137,26 @@
                     db.collection('sticker_production').doc('main_data').set(dataToSave)
                         .then(() => {
                             setSaveStatus('saved');
-                            setTimeout(() => setSaveStatus('idle'), 2000);
+                            setTimeout(() => { if(saveStatus === 'saving') setSaveStatus('saved') }, 1000);
                         })
                         .catch(e => {
-                            setSaveStatus('error');
-                            alert("❌ Error guardando en nube: " + e.message);
+                            console.error("Error guardado:", e);
+                            if (e.code === 'permission-denied') {
+                                setSaveStatus('permission-error');
+                            } else {
+                                setSaveStatus('error');
+                            }
                         });
-                } else {
-                    if(newDesigns) localStorage.setItem('stk_data_v7', JSON.stringify(newDesigns));
-                    if(newHistory) localStorage.setItem('stk_hist_v7', JSON.stringify(newHistory));
-                    if(newSettings) localStorage.setItem('stk_conf_v7', JSON.stringify(newSettings));
                 }
             };
 
-            const forceUpload = () => {
-                if(!confirm("¿Subir los datos de esta pantalla a la nube?")) return;
-                saveData(null, null, null); 
+            const forceReset = () => {
+                if(confirm("¿Seguro que quieres borrar TODO en la nube?")) {
+                    saveData(INITIAL_DATA, [], { startDate: Date.now(), deadlineDate: Date.now() + (1000 * 60 * 60 * 24 * 14) });
+                    setShowSettingsModal(false);
+                }
             };
 
-            // ... helpers ...
             const getTotalInProcess = (d) => Object.values(d.stages).reduce((a,b) => a + b, 0);
             const getPending = (d) => Math.max(0, d.target - getTotalInProcess(d));
             
@@ -194,50 +189,26 @@
                 setShowMoveModal(false);
             };
 
-            // --- PARSER SEGURO PARA SQUARESPACE ---
-            const handleConnectFirebase = () => {
-                const text = configInput.trim();
-                
-                // Función para extraer el valor de una clave usando Regex simple
-                const extract = (key) => {
-                    // Busca patterns como: key: "valor" OR key: 'valor'
-                    const match = text.match(new RegExp(`${key}\\s*:\\s*["']([^"']+)["']`));
-                    return match ? match[1] : null;
-                };
-
-                const config = {
-                    apiKey: extract('apiKey'),
-                    authDomain: extract('authDomain'),
-                    projectId: extract('projectId'),
-                    storageBucket: extract('storageBucket'),
-                    messagingSenderId: extract('messagingSenderId'),
-                    appId: extract('appId'),
-                    measurementId: extract('measurementId')
-                };
-
-                // Verificación básica
-                if (!config.apiKey || !config.projectId) {
-                    alert("No se pudo leer la configuración. Asegúrate de copiar todo el bloque: const firebaseConfig = { ... };");
-                    return;
-                }
-
-                localStorage.setItem('firebase_app_config', JSON.stringify(config));
-                alert("✅ Configuración leída correctamente. Recargando...");
-                window.location.reload();
-            };
-            
-            const handleDisconnect = () => {
-                if(confirm("¿Desconectar de la nube?")) {
-                    localStorage.removeItem('firebase_app_config');
-                    window.location.reload();
-                }
-            };
-
             const selectedDesign = designs.find(d => d.id === selectedDesignId) || designs[0];
             const selectedPending = getPending(selectedDesign);
 
             return (
                 <div className="pb-20 max-w-7xl mx-auto px-4 md:px-8 py-6">
+                    
+                    {/* Alerta de Permisos - Solo sale si fallan las reglas de Firebase */}
+                    {saveStatus === 'permission-error' && (
+                        <div className="bg-red-500 text-white p-4 rounded-xl mb-6 shadow-lg animate-pop">
+                            <div className="flex items-center gap-2 font-bold mb-1">
+                                <Icons.Alert /> ¡ATENCIÓN! Firebase está bloqueando el guardado
+                            </div>
+                            <p className="text-sm opacity-90 mb-2">La App funciona pero <strong>no está guardando en la nube</strong> porque las "Reglas" de Firebase están en modo bloqueado.</p>
+                            <div className="text-xs bg-black/20 p-2 rounded font-mono">
+                                Ve a Firebase Console &gt; Firestore Database &gt; Reglas y pon esto:<br/>
+                                <code>allow read, write: if true;</code>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Header */}
                     <div className="flex justify-between items-center mb-8 sticky top-0 z-30 py-4 glass-header -mx-4 px-4 md:-mx-8 md:px-8">
                         <div>
@@ -247,14 +218,12 @@
                             </h1>
                             <div className="flex items-center gap-3 mt-1 text-sm font-semibold text-slate-500">
                                 <span>Entrega: <span className="text-slate-700">{new Date(settings.deadlineDate).toLocaleDateString('es-CL', {day:'numeric', month:'long'})}</span></span>
-                                {isOnline ? 
-                                    <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-emerald-100"><Icons.CloudOn /> Online</span> : 
-                                    <span className="flex items-center gap-1 text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-slate-200" title="Modo Local"><Icons.CloudOff /> Local</span>
-                                }
-                                {/* Save Status */}
+                                
+                                {/* Status Indicator */}
+                                {saveStatus === 'loading' && <span className="text-[10px] text-slate-400 font-bold">Cargando...</span>}
                                 {saveStatus === 'saving' && <span className="text-[10px] text-yellow-600 font-bold animate-pulse">Guardando...</span>}
-                                {saveStatus === 'saved' && <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><Icons.Check /> Al día</span>}
-                                {saveStatus === 'error' && <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded">Error Sync</span>}
+                                {saveStatus === 'saved' && <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-emerald-100"><Icons.CloudOn /> Sync OK</span>}
+                                {(saveStatus === 'error' || saveStatus === 'permission-error') && <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border border-red-100"><Icons.Alert /> Error Sync</span>}
                             </div>
                         </div>
                         <button onClick={() => setShowHistoryModal(true)} className="bg-white hover:bg-slate-50 border border-slate-200 p-3 rounded-xl shadow-sm text-slate-600 relative">
@@ -429,45 +398,13 @@
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-pop" onClick={() => setShowSettingsModal(false)}>
                             <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <h3 className="font-black text-xl mb-6 text-slate-800 border-b border-slate-100 pb-4">Configuración</h3>
-                                
-                                <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
-                                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Base de Datos (Nube)</span>
-                                    </div>
-                                    
-                                    {!isOnline ? (
-                                        <div className="space-y-3">
-                                            <p className="text-xs text-slate-500">Pega aquí el código que te da Firebase para sincronizar entre dispositivos.</p>
-                                            <textarea 
-                                                className="w-full text-xs p-2 rounded border border-slate-200 bg-white h-20 outline-none focus:border-yellow-400 font-mono"
-                                                placeholder='const firebaseConfig = { ... }'
-                                                value={configInput}
-                                                onChange={e => setConfigInput(e.target.value)}
-                                            ></textarea>
-                                            <button onClick={handleConnectFirebase} className="w-full py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900">Conectar Nube</button>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm font-bold text-emerald-600">Conectado y Sincronizando</span>
-                                                <button onClick={handleDisconnect} className="text-xs text-rose-500 font-bold hover:underline">Desconectar</button>
-                                            </div>
-                                            <button onClick={forceUpload} className="w-full py-2 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-xs font-bold hover:bg-blue-100 flex justify-center gap-2 items-center">
-                                                <Icons.Upload /> Subir mis datos a la nube
-                                            </button>
-                                            <p className="text-[10px] text-slate-400 text-center leading-tight">Usa esto si la nube está vacía pero tú tienes datos aquí.</p>
-                                        </div>
-                                    )}
-                                </div>
-
                                 <div className="space-y-5">
                                     <div><label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Fecha Inicio</label><input type="date" className="input-select" value={new Date(settings.startDate).toISOString().split('T')[0]} onChange={e => setSettings({...settings, startDate: new Date(e.target.value).getTime()})} /></div>
                                     <div><label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Fecha Límite</label><input type="date" className="input-select" value={new Date(settings.deadlineDate).toISOString().split('T')[0]} onChange={e => setSettings({...settings, deadlineDate: new Date(e.target.value).getTime()})} /></div>
                                 </div>
                                 <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center gap-4">
-                                    <button onClick={() => { if(confirm("¿Resetear TODO?")) { saveData(INITIAL_DATA, [], null); setShowSettingsModal(false); } }} className="text-rose-500 text-xs font-bold px-4 py-3 hover:bg-rose-50 rounded-xl transition-colors">RESET TOTAL</button>
-                                    <button onClick={() => setShowSettingsModal(false)} className="bg-slate-800 text-white flex-1 py-3 rounded-xl font-bold text-sm hover:bg-slate-900 transition-colors shadow-lg">Cerrar</button>
+                                    <button onClick={forceReset} className="text-rose-500 text-xs font-bold px-4 py-3 hover:bg-rose-50 rounded-xl transition-colors">RESET TOTAL (NUBE)</button>
+                                    <button onClick={() => setShowSettingsModal(false)} className="bg-slate-800 text-white flex-1 py-3 rounded-xl font-bold text-sm hover:bg-slate-900 transition-colors shadow-lg">Listo</button>
                                 </div>
                             </div>
                         </div>
